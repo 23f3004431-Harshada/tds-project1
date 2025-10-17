@@ -13,9 +13,8 @@ app.use(express.json({ limit: '50mb' }));
 // Configuration
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const GITHUB_USERNAME = process.env.GITHUB_USERNAME;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const LLM_PROVIDER = process.env.LLM_PROVIDER || 'openai';
+const LLM_PROVIDER = 'anthropic'; // Fixed to Anthropic
 const SECRET_KEY = process.env.SECRET_KEY || 'default-secret-key';
 const PORT = process.env.PORT || 3000;
 
@@ -124,54 +123,41 @@ Provide ONLY the complete updated HTML code, nothing else.`;
   return prompt;
 }
 
-// Helper: Call LLM API
+// Helper: Call Anthropic Claude API
 async function callLLM(prompt) {
   try {
-    if (LLM_PROVIDER === 'anthropic') {
-      const response = await axios.post(
-        'https://api.anthropic.com/v1/messages',
-        {
-          model: 'claude-3-5-sonnet-20241022',
-          max_tokens: 8192,
-          messages: [{ role: 'user', content: prompt }]
-        },
-        {
-          headers: {
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json'
+    console.log('Calling Anthropic Claude API...');
+    
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 8192,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
           }
-        }
-      );
+        ]
+      },
+      {
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        timeout: 60000
+      }
+    );
+
+    if (response.data.content && response.data.content[0]) {
       return response.data.content[0].text;
     } else {
-      // OpenAI
-      const response = await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: 'gpt-4-turbo-preview',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert web developer. Generate complete, functional HTML applications with inline CSS and JavaScript. Return ONLY the HTML code without explanations.'
-            },
-            { role: 'user', content: prompt }
-          ],
-          temperature: 0.7,
-          max_tokens: 8192
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      return response.data.choices[0].message.content;
+      throw new Error('Unexpected response format from Anthropic API');
     }
   } catch (error) {
-    console.error('LLM API Error:', error.response?.data || error.message);
-    throw new Error(`LLM API failed: ${error.message}`);
+    console.error('Anthropic API Error:', error.response?.data || error.message);
+    throw new Error(`Anthropic API failed: ${error.message}`);
   }
 }
 
@@ -342,7 +328,7 @@ app.post('/api-endpoint', async (req, res) => {
     console.log('='.repeat(60));
 
     if (!secret || !verifySecret(secret)) {
-      console.log('❌ Secret verification failed');
+      console.log('✗ Secret verification failed');
       return res.status(401).json({
         error: 'Unauthorized',
         message: 'Invalid or missing secret'
@@ -352,7 +338,7 @@ app.post('/api-endpoint', async (req, res) => {
 
     // Validate required fields
     if (!task_id || !brief || !evaluation_url) {
-      console.log('❌ Missing required fields');
+      console.log('✗ Missing required fields');
       return res.status(400).json({
         error: 'Bad Request',
         message: 'Missing required fields: task_id, brief, evaluation_url'
@@ -381,7 +367,7 @@ app.post('/api-endpoint', async (req, res) => {
         const repoName = repo_name || taskState.repoName || `app-${task_id.replace(/[^a-zA-Z0-9]/g, '-')}-${Date.now()}`;
 
         // 3. Call LLM to generate code
-        console.log(`\n🤖 Generating code with ${LLM_PROVIDER.toUpperCase()}...`);
+        console.log(`\n🤖 Generating code with ANTHROPIC CLAUDE...`);
         const prompt = buildPrompt(brief, parsedAttachments, round, isUpdate ? taskState.lastCode : null);
         const llmResponse = await callLLM(prompt);
         const htmlContent = extractHTML(llmResponse);
@@ -426,7 +412,7 @@ app.post('/api-endpoint', async (req, res) => {
         console.log('='.repeat(60) + '\n');
 
       } catch (error) {
-        console.error(`\n❌ Task ${task_id} failed:`, error.message);
+        console.error(`\n✗ Task ${task_id} failed:`, error.message);
         console.log('='.repeat(60) + '\n');
 
         // Send error to evaluation API
@@ -494,7 +480,7 @@ app.listen(PORT, () => {
   console.log('\n' + '='.repeat(60));
   console.log('🚀 Student API Server Started');
   console.log('='.repeat(60));
-  console.log(`📍 Port: ${PORT}`);
+  console.log(`🔌 Port: ${PORT}`);
   console.log(`🤖 LLM Provider: ${LLM_PROVIDER.toUpperCase()}`);
   console.log(`👤 GitHub User: ${GITHUB_USERNAME}`);
   console.log(`🔧 Endpoints:`);
